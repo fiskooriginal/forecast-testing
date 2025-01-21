@@ -1,11 +1,9 @@
 import os
-import sys
 import re
-
 import asyncio
-
+import sys
+from openpyxl import load_workbook
 import pandas as pd
-
 from config import (
     RESULTS_FILE,
     AUTOTESTS_FILE,
@@ -30,7 +28,7 @@ def get_uuid_by_type(type: str) -> str:
 def get_file_path_by_execution_uuid_and_experiment_id(
     files: list, execution_uuid: str, experiment_id: str
 ):
-    pattern = r"experiments\\results_(?P<execution_uuid>[a-zA-Z0-9-]+)_(?P<experiment_id>[a-zA-Z0-9-]+)\.xlsx"
+    pattern = r"experiments\\results_(?P<execution_uuid>[a-zA-Z0-9-]+)_(?P<experiment_id>[a-zA-Z0-9-]+).xlsx"
 
     for file_path in files:
         match = re.match(pattern, file_path)
@@ -46,7 +44,7 @@ def get_file_path_by_execution_uuid_and_experiment_id(
 
 def filter_and_sort_files_by_execution_uuid(files, target_execution_uuid):
     pattern = re.compile(
-        r"experiments\\results_(?P<execution_uuid>[a-zA-Z0-9-]+)_(?P<experiment_id>[a-zA-Z0-9-]+)\.xlsx"
+        r"experiments\\results_(?P<execution_uuid>[a-zA-Z0-9-]+)_(?P<experiment_id>[a-zA-Z0-9-]+)\\.xlsx"
     )
 
     filtered_files = [
@@ -115,104 +113,43 @@ def calculate_trend(base_value, compare_value) -> tuple:
     return difference, trend
 
 
-async def process_qualitative_tests() -> list:
-    """Обрабатывает качественные тесты."""
-    print(QUALITY_PREFIX, "Началась обработка качественных тестов...")
+def update_excel_cell(sheet, row, col, value):
+    """Обновляет значение ячейки в листе Excel."""
+    sheet.cell(row=row, column=col, value=value)
 
+
+def process_tests_common(
+    tests_df, workbook, sheet_name, prefix, uuid_key, process_test
+):
+    """Общий процесс обработки тестов."""
+    print(prefix, f"Началась обработка {prefix.lower()} тестов...")
     files_list = load_results_files()
-    execution_uuid = get_uuid_by_type("quality")
+    execution_uuid = get_uuid_by_type(uuid_key)
     base_file = get_file_path_by_execution_uuid_and_experiment_id(
         files_list, execution_uuid, "0"
     )
     base_df = pd.read_excel(base_file)
 
-    qualitative_df = pd.read_excel(
-        AUTOTESTS_FILE, sheet_name="Список качественных автотестов"
-    )
-
-    qualitative_results = []
-    for _, test in qualitative_df.iterrows():
+    results = []
+    for index, test in tests_df.iterrows():
         experiment_id = str(test["id Теста"])
 
-        print(QUALITY_PREFIX, f"PROCESS Experiment {experiment_id}")
-        result = True
+        print(prefix, f"PROCESS Experiment {experiment_id}")
+        result = process_test(test, base_df, files_list, execution_uuid, experiment_id)
 
-        experiment_file = get_file_path_by_execution_uuid_and_experiment_id(
-            files_list, execution_uuid, experiment_id
-        )
-        if experiment_file is None:
-            print(
-                QUALITY_PREFIX,
-                f"-- ERROR: Не найден файл с результатами эксперимента для №{experiment_id}",
-            )
-            result = False
-        else:
-            experiment_df = pd.read_excel(experiment_file)
+        sheet = workbook[sheet_name]
 
-            # Проверка "Взаимосвязь расчетов"
-            linkage_test_result = True
-            linkage = test["Взаимосвязь расчетов"]
-            if linkage and pd.notna(linkage):
-                linked_id = linkage.split("id=")[1].split(")")[0]
-                linked_file = get_file_path_by_execution_uuid_and_experiment_id(
-                    files_list, execution_uuid, linked_id
-                )
-                linked_df = pd.read_excel(linked_file)
+        # Update result in Excel
+        # update_excel_cell(
+        #     sheet, index + 2, tests_df.columns.get_loc("Итог") + 1, result
+        # )
 
-                linked_sum = linked_df["sum"].sum()
-                current_sum = experiment_df["sum"].sum()
+        for col_idx, value in enumerate(test):
+            # openpyxl использует 1-based индексацию
+            sheet.cell(row=index + 2, column=col_idx + 1, value=value)  # +2 для учета заголовков
 
-                if current_sum >= linked_sum:
-                    print(
-                        QUALITY_PREFIX,
-                        f"-- FAILED: experiment #{experiment_id} (linkage {linkage})",
-                    )
-                    linkage_test_result = False
-                else:
-                    print(
-                        QUALITY_PREFIX,
-                        f"-- SUCCESS: experiment #{experiment_id} (linkage {linkage})",
-                    )
 
-            # Проверка "Тренд"
-            base_df["year"] = pd.to_datetime(base_df["dt"]).dt.year
-            experiment_df["year"] = pd.to_datetime(experiment_df["dt"]).dt.year
-
-            trend_conditions = prepare_trend_conditions(test["Тренд"])
-
-            trend_test_result = True
-            for year, expected_trend in trend_conditions:
-                base_value = base_df.loc[base_df["year"] == year, "sum"].values[0]
-                compare_value = experiment_df.loc[
-                    experiment_df["year"] == year, "sum"
-                ].values[0]
-
-                if expected_trend != 0:
-                    difference, trend = calculate_trend(base_value, compare_value)
-                    if trend != expected_trend:
-                        print(
-                            QUALITY_PREFIX,
-                            f"-- FAILED: for year {year}, difference {difference} (expected trend {expected_trend})",
-                        )
-                        trend_test_result = False
-                        break
-                else:
-                    difference_percent = (
-                        abs(base_value - compare_value) / base_value * 100
-                    )
-                    if difference_percent > TREND_PERMISSIBLE_ERROR:
-                        print(
-                            QUALITY_PREFIX,
-                            f"-- FAILED: for year {year}, difference {difference_percent}%",
-                        )
-                        trend_test_result = False
-                        break
-
-                print(QUALITY_PREFIX, f"-- SUCCESS: for year {year}")
-
-        result = True if linkage_test_result and trend_test_result else False
-        # Добавляем результат, независимо от того, прошел ли тест
-        qualitative_results.append(
+        results.append(
             {
                 "execution_uuid": execution_uuid,
                 "experiment_id": experiment_id,
@@ -220,81 +157,126 @@ async def process_qualitative_tests() -> list:
             }
         )
 
-    return qualitative_results
+    return results
 
 
-async def process_quantitative_tests() -> list:
-    """Обрабатывает количественные тесты."""
-    print(QUANTITY_PREFIX, "Началась обработка количественных тестов...")
+def process_qualitative_test(test, base_df, files_list, execution_uuid, experiment_id):
+    """Обрабатывает один качественный тест."""
+    result = True
 
-    files_list = load_results_files()
-    execution_uuid = get_uuid_by_type("quantity")
-    base_file = get_file_path_by_execution_uuid_and_experiment_id(
-        files_list, execution_uuid, "0"
+    experiment_file = get_file_path_by_execution_uuid_and_experiment_id(
+        files_list, execution_uuid, experiment_id
     )
-    base_df = pd.read_excel(base_file)
+    if experiment_file is None:
+        print(
+            QUALITY_PREFIX,
+            f"-- ERROR: Не найден файл с результатами эксперимента для №{experiment_id}",
+        )
+        result = False
+    else:
+        experiment_df = pd.read_excel(experiment_file)
 
-    quantitative_df = pd.read_excel(
-        AUTOTESTS_FILE, sheet_name="Список количественных автотесто"
+        # Проверка "Взаимосвязь расчетов"
+        linkage_test_result = True
+        linkage = test["Взаимосвязь расчетов"]
+        if linkage and pd.notna(linkage):
+            linked_id = linkage.split("id=")[1].split(")")[0]
+            linked_file = get_file_path_by_execution_uuid_and_experiment_id(
+                files_list, execution_uuid, linked_id
+            )
+            linked_df = pd.read_excel(linked_file)
+
+            linked_sum = linked_df["sum"].sum()
+            current_sum = experiment_df["sum"].sum()
+
+            linkage_test_result = current_sum < linked_sum
+
+        # Проверка "Тренд"
+        base_df["year"] = pd.to_datetime(base_df["dt"]).dt.year
+        experiment_df["year"] = pd.to_datetime(experiment_df["dt"]).dt.year
+
+        trend_conditions = prepare_trend_conditions(test["Тренд"])
+        trend_test_result = all(
+            calculate_trend(
+                base_df.loc[base_df["year"] == year, "sum"].values[0],
+                experiment_df.loc[experiment_df["year"] == year, "sum"].values[0],
+            )[1]
+            == expected_trend
+            for year, expected_trend in trend_conditions
+        )
+
+        result = linkage_test_result and trend_test_result
+
+    return result
+
+
+def process_quantitative_test(test, base_df, files_list, execution_uuid, experiment_id):
+    """Обрабатывает один количественный тест."""
+    result = True
+
+    experiment_file = get_file_path_by_execution_uuid_and_experiment_id(
+        files_list, execution_uuid, experiment_id
     )
+    if experiment_file is None:
+        print(
+            QUANTITY_PREFIX,
+            f"-- ERROR: Не найден файл с результатами эксперимента для №{experiment_id}",
+        )
+        result = False
+    else:
+        experiment_df = pd.read_excel(experiment_file)
+        temp_df = experiment_df.copy()
+        temp_df["difference"] = experiment_df["sum"] - base_df["sum"]
+        temp_df["year"] = pd.to_datetime(temp_df["dt"]).dt.year
 
-    quantitative_results = []
-    for _, test in quantitative_df.iterrows():
-        experiment_id = str(test["id Теста"])
-
-        print(QUANTITY_PREFIX, f"Experiment {experiment_id}")
         result = True
 
-        experiment_file = get_file_path_by_execution_uuid_and_experiment_id(
-            files_list, execution_uuid, experiment_id
-        )
-        if experiment_file is None:
-            print(
-                QUANTITY_PREFIX,
-                f"-- ERROR: Не найден файл с результатами эксперимента для №{experiment_id}",
-            )
-            result = False
-        else:
-            experiment_df = pd.read_excel(experiment_file)
-
-            temp_df = experiment_df.copy()
-            difference = experiment_df["sum"] - base_df["sum"]
-            temp_df["difference"] = difference
-            temp_df["year"] = pd.to_datetime(temp_df["dt"]).dt.year
-
-            effect_tnav = test["Эффект за 2025-2026 года по tNav"]
-
-            effect_ml = 0
-            for year in YEARS_TO_CHECK:
-                effect_ml += temp_df.loc[temp_df["year"] == year, "difference"].values[
-                    0
-                ]
-
+        for year in YEARS_TO_CHECK:
+            effect_tnav = test[f"Эффект за {year} год по tNav"]
+            effect_ml = temp_df.loc[temp_df["year"] == year, "difference"].values[0]
             relative_error = (1 - (effect_tnav - effect_ml) / effect_tnav) * 100
+            test[f"Эффект за {year} год по ML"] = effect_ml
 
             if abs(relative_error) > RELATIVE_ERROR:
-                print(
-                    QUANTITY_PREFIX,
-                    f"-- ERROR: относительная погрешность {abs(relative_error)} больше допустимой нормы {RELATIVE_ERROR}",
-                )
                 result = False
-            else:
-                print(QUANTITY_PREFIX, f"-- SUCCESS: for experiment {experiment_id}")
 
-        quantitative_results.append(
-            {
-                "execution_uuid": execution_uuid,
-                "experiment_id": experiment_id,
-                "result": result,
-            }
-        )
+        # effect_tnav = test["Эффект за 2025-2026 года по tNav"]
+        # effect_ml = sum(
+        #     temp_df.loc[temp_df["year"] == year, "difference"].values[0]
+        #     for year in YEARS_TO_CHECK
+        # )
 
-    return quantitative_results
+    return result
 
 
-def process_tests() -> tuple:
+async def process_qualitative_tests(qualitative_df: pd.DataFrame, workbook) -> list:
+    return process_tests_common(
+        qualitative_df,
+        workbook,
+        "Список качественных автотестов",
+        QUALITY_PREFIX,
+        "quality",
+        process_qualitative_test,
+    )
+
+
+async def process_quantitative_tests(quantitative_df: pd.DataFrame, workbook) -> list:
+    return process_tests_common(
+        quantitative_df,
+        workbook,
+        "Список количественных автотесто",
+        QUANTITY_PREFIX,
+        "quantity",
+        process_quantitative_test,
+    )
+
+
+def process_tests(qualitative_df, quantitative_df, workbook) -> tuple:
     async def _run_async_process():
-        tasks = [process_qualitative_tests(), process_quantitative_tests()]
+        tasks = [
+            process_qualitative_tests(qualitative_df, workbook),
+            process_quantitative_tests(quantitative_df, workbook),
+        ]
         return await asyncio.gather(*tasks)
 
     return tuple(asyncio.run(_run_async_process()))
@@ -309,32 +291,19 @@ def run_stage_two():
             f"Директория {EXPERIMENTS_DIR} с результатами экспериментов не найдена."
         )
 
+    workbook = load_workbook(AUTOTESTS_FILE)
+    qualitative_df = pd.read_excel(
+        AUTOTESTS_FILE, sheet_name="Список качественных автотестов", engine="openpyxl"
+    )
+    quantitative_df = pd.read_excel(
+        AUTOTESTS_FILE, sheet_name="Список количественных автотесто", engine="openpyxl"
+    )
+
     # Обработка качественных и количественных тестов
-    qualitative_results, quantitative_results = process_tests()
+    process_tests(qualitative_df, quantitative_df, workbook)
 
-    print("Завершено автоматическое тестирование")
-
-    # Проверяем, что данные найдены
-    if not qualitative_results and not quantitative_results:
-        raise ValueError(
-            "Результаты экспериментов не найдены или не содержат необходимых данных."
-        )
-
-    # Сохранение в RESULTS_FILE только при успешной обработке
-    with pd.ExcelWriter(RESULTS_FILE) as writer:
-        if qualitative_results:  # Если есть результаты качественных тестов
-            qualitative_df = pd.DataFrame(qualitative_results)
-            qualitative_df.to_excel(
-                writer, sheet_name="Качественные тесты", index=False
-            )
-
-        if quantitative_results:  # Если есть результаты количественных тестов
-            quantitative_df = pd.DataFrame(quantitative_results)
-            quantitative_df.to_excel(
-                writer, sheet_name="Количественные тесты", index=False
-            )
-
-    print(f"Файл {RESULTS_FILE} успешно создан.")
+    # Сохранение изменений
+    workbook.save(AUTOTESTS_FILE)
 
 
 if __name__ == "__main__":
