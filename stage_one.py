@@ -28,7 +28,7 @@ def process_events(event_str):
 
     parsed_events = []
     for event in events:
-        match = re.match(r"\((\d+),\s*(\d+)\)", event.strip())
+        match = re.match(r"\((\d+),\s*(-?\d+)\)", event.strip())
         if match:
             parsed_events.append((int(match.group(1)), int(match.group(2))))
 
