@@ -139,12 +139,14 @@ def process_tests_common(
 
         sheet = workbook[sheet_name]
 
+        # Update effect in quantitive tests
+        for col_idx, value in enumerate(test):
+            sheet.cell(row=index + 2, column=col_idx + 1, value=value)
+
         # Update result in Excel
         update_excel_cell(
             sheet, index + 2, tests_df.columns.get_loc("Итог") + 1, result
         )
-        for col_idx, value in enumerate(test):
-            sheet.cell(row=index + 2, column=col_idx + 1, value=value)
 
         results.append(
             {
@@ -329,17 +331,22 @@ def run_stage_two():
 
     workbook = load_workbook(AUTOTESTS_FILE)
     qualitative_df = pd.read_excel(
-        AUTOTESTS_FILE, sheet_name="Список качественных автотестов", engine="openpyxl"
+        AUTOTESTS_FILE,
+        sheet_name="Список качественных автотестов",
     )
     quantitative_df = pd.read_excel(
-        AUTOTESTS_FILE, sheet_name="Список количественных автотесто", engine="openpyxl"
+        AUTOTESTS_FILE, sheet_name="Список количественных автотесто"
     )
 
     # Обработка качественных и количественных тестов
     process_tests(qualitative_df, quantitative_df, workbook)
 
+    file_name = f"{AUTOTESTS_FILE}_new.xlsx"
+
     # Сохранение изменений
-    workbook.save(AUTOTESTS_FILE)
+    workbook.save(file_name)
+
+    print(f"Результаты тестирования сохранены в файле {file_name}")
 
 
 if __name__ == "__main__":
