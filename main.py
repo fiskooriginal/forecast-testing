@@ -4,6 +4,7 @@ import os
 
 from config import RESOURCES_DIR, EXPERIMENTS_DIR
 
+
 def main():
     # auto-create all necessary directories
     os.makedirs(RESOURCES_DIR, exist_ok=True)
@@ -22,6 +23,7 @@ def main():
     else:
         print(f"Неизвестный этап: {stage}. Доступные этапы: stage_one, stage_two")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

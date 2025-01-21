@@ -1,10 +1,12 @@
+import asyncio
 import pandas as pd
 from datetime import datetime
 import os
 import sys
 import re
 
-from config import START_PARAMS_FILE, AUTOTESTS_FILE, RESOURCES_DIR, ANALYTICS_URL
+from config import START_PARAMS_DIR, AUTOTESTS_FILE, RESOURCES_DIR
+
 
 def process_years(years):
     if isinstance(years, int):
@@ -12,6 +14,7 @@ def process_years(years):
     if isinstance(years, str):
         return [int(year.strip()) for year in years.split(";")]
     raise ValueError(f"Неверный формат данных для года: {years}")
+
 
 def process_events(event_str):
     """
@@ -31,28 +34,24 @@ def process_events(event_str):
 
     return parsed_events
 
-def run_stage_one():
-    if not os.path.exists(AUTOTESTS_FILE):
-        raise FileNotFoundError(
-            f"Файл {AUTOTESTS_FILE} не найден. Поместите его в папку {RESOURCES_DIR}."
-        )
 
-    autotests_df = pd.read_excel(AUTOTESTS_FILE)
-
-    start_params_df = pd.DataFrame(
-        columns=[
-            "Порядковый номер",
-            "ID мероприятия",
-            "Параметры мероприятия",
-            "Дата проведения",
-            "Название",
-            "Статус",
-        ]
+async def generate_quality_tests():
+    tests_df = pd.read_excel(
+        AUTOTESTS_FILE, sheet_name="Список качественных автотестов"
     )
 
     order_number = 1
-
-    for _, row in autotests_df.iterrows():
+    for _, row in tests_df.iterrows():
+        df = pd.DataFrame(
+            columns=[
+                "Порядковый номер",
+                "ID мероприятия",
+                "Параметры мероприятия",
+                "Дата проведения",
+                "Название",
+                "Статус",
+            ]
+        )
         try:
             events = process_events(row["Мероприятие"])
             years = process_years(row["Год"])
@@ -60,31 +59,96 @@ def run_stage_one():
             for event in events:
                 for year in years:
                     event_id, event_params = event
-                    new_row_df = pd.DataFrame(
-                        {
-                            "Порядковый номер": order_number,
-                            "ID мероприятия": event_id,
-                            "Название": ["Для заполнения вручную"],
-                            "Дата проведения": [datetime(year, 1, 1)],
-                            "Параметры мероприятия": event_params,
-                            "Статус": [True],
-                        }
-                    )
-                    if not new_row_df.empty:
-                        start_params_df = pd.concat(
-                            [start_params_df, new_row_df],
-                            ignore_index=True,
-                        )
+
+                    df.loc[len(df)] = {
+                        "Порядковый номер": order_number,
+                        "ID мероприятия": event_id,
+                        "Название": event_id,
+                        "Дата проведения": datetime(year, 1, 1),
+                        "Параметры мероприятия": event_params,
+                        "Статус": True,
+                    }
+
+            file_name = os.path.join(
+                START_PARAMS_DIR, f"quality_test_{order_number}.xlsx"
+            )
+            df.to_excel(file_name, index=False)
+            print(f"Файл {file_name} успешно создан.")
+
             order_number += 1
         except Exception as e:
             raise Exception(f"Ошибка обработки строки: {row}. Детали: {e}")
 
-    
-    
-    start_params_df.to_excel(START_PARAMS_FILE, index=False)
-    print(f"Файл {START_PARAMS_FILE} успешно создан.")
-    
-    
+
+async def generate_quantity_tests():
+    tests_df = pd.read_excel(
+        AUTOTESTS_FILE, sheet_name="Список количественных автотесто"
+    )
+
+    order_number = 1
+    for _, row in tests_df.iterrows():
+        df = pd.DataFrame(
+            columns=[
+                "Порядковый номер",
+                "ID мероприятия",
+                "Параметры мероприятия",
+                "Дата проведения",
+                "Название",
+                "Статус",
+            ]
+        )
+        try:
+            events = process_events(row["Мероприятие"])
+
+            for event in events:
+                event_id, event_params = event
+
+                df.loc[len(df)] = {
+                    "Порядковый номер": order_number,
+                    "ID мероприятия": event_id,
+                    "Название": event_id,
+                    "Дата проведения": pd.to_datetime(row["Год запуска"]),
+                    "Параметры мероприятия": event_params,
+                    "Статус": True,
+                }
+
+            file_name = os.path.join(
+                START_PARAMS_DIR, f"quantity_test_{order_number}.xlsx"
+            )
+            df.to_excel(file_name, index=False)
+            print(f"Файл {file_name} успешно создан.")
+
+            order_number += 1
+        except Exception as e:
+            raise Exception(f"Ошибка обработки строки: {row}. Детали: {e}")
+
+
+def process_generation():
+    async def _run_async_process():
+        tasks = [
+            generate_quality_tests(),
+            generate_quantity_tests(),
+        ]
+        return await asyncio.gather(*tasks)
+
+    asyncio.run(_run_async_process())
+
+
+def run_stage_one():
+    if not os.path.exists(AUTOTESTS_FILE):
+        raise FileNotFoundError(
+            f"Файл {AUTOTESTS_FILE} не найден. Поместите его в папку {RESOURCES_DIR}."
+        )
+
+    if not os.path.exists(START_PARAMS_DIR):
+        raise FileNotFoundError(
+            f"Директория {START_PARAMS_DIR} не найдена. Создайте её."
+        )
+
+    process_generation()
+
+    print("Генерация файлов со стартовыми параметрами завершена.")
+
 
 if __name__ == "__main__":
     try:

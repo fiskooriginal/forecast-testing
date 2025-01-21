@@ -1,0 +1,6 @@
+__pycache__/
+.git
+results_*.xlsx
+results.xlsx
+quality_*.xlsx
+quantity_*.xlsx
