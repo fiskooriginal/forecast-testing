@@ -140,6 +140,9 @@ def process_tests_common(
         sheet = workbook[sheet_name]
 
         # Update result in Excel
+        update_excel_cell(
+            sheet, index + 2, tests_df.columns.get_loc("Итог") + 1, result
+        )
         for col_idx, value in enumerate(test):
             sheet.cell(row=index + 2, column=col_idx + 1, value=value)
 
@@ -174,6 +177,8 @@ def process_qualitative_test(test, base_df, files_list, execution_uuid, experime
         linkage_test_result = True
         linkage = test["Взаимосвязь расчетов"]
         if linkage and pd.notna(linkage):
+            # >|(id=14)|
+            linked_sign = linkage.pop(0)
             linked_id = linkage.split("id=")[1].split(")")[0]
             linked_file = get_file_path_by_execution_uuid_and_experiment_id(
                 files_list, execution_uuid, linked_id
@@ -183,8 +188,16 @@ def process_qualitative_test(test, base_df, files_list, execution_uuid, experime
             linked_sum = linked_df["sum"].sum()
             current_sum = experiment_df["sum"].sum()
 
-            linkage_test_result = current_sum < linked_sum
-
+            linkage_test_result = False
+            if linked_sign == ">":
+                linkage_test_result = current_sum > linked_sum
+            elif linked_sign == "<":
+                linkage_test_result = current_sum < linked_sum
+            else:
+                print(
+                    QUALITY_PREFIX,
+                    f"-- ERROR: Непредусмотренный символ во взаимосвязи расчетов '{linked_sign}'",
+                )
             print(
                 QUALITY_PREFIX,
                 f"-- {'SUCCESS' if linkage_test_result else 'FAILED'}: linkage test {linkage}",
