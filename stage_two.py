@@ -140,14 +140,8 @@ def process_tests_common(
         sheet = workbook[sheet_name]
 
         # Update result in Excel
-        # update_excel_cell(
-        #     sheet, index + 2, tests_df.columns.get_loc("Итог") + 1, result
-        # )
-
         for col_idx, value in enumerate(test):
-            # openpyxl использует 1-based индексацию
-            sheet.cell(row=index + 2, column=col_idx + 1, value=value)  # +2 для учета заголовков
-
+            sheet.cell(row=index + 2, column=col_idx + 1, value=value)
 
         results.append(
             {
@@ -191,19 +185,43 @@ def process_qualitative_test(test, base_df, files_list, execution_uuid, experime
 
             linkage_test_result = current_sum < linked_sum
 
+            print(
+                QUALITY_PREFIX,
+                f"-- {'SUCCESS' if linkage_test_result else 'FAILED'}: linkage test {linkage}",
+            )
+
         # Проверка "Тренд"
         base_df["year"] = pd.to_datetime(base_df["dt"]).dt.year
         experiment_df["year"] = pd.to_datetime(experiment_df["dt"]).dt.year
 
         trend_conditions = prepare_trend_conditions(test["Тренд"])
-        trend_test_result = all(
-            calculate_trend(
-                base_df.loc[base_df["year"] == year, "sum"].values[0],
-                experiment_df.loc[experiment_df["year"] == year, "sum"].values[0],
-            )[1]
-            == expected_trend
-            for year, expected_trend in trend_conditions
-        )
+        trend_test_result = True
+        for year, expected_trend in trend_conditions:
+            base_value = base_df.loc[base_df["year"] == year, "sum"].values[0]
+            compare_value = experiment_df.loc[
+                experiment_df["year"] == year, "sum"
+            ].values[0]
+
+            if expected_trend != 0:
+                difference, trend = calculate_trend(base_value, compare_value)
+                if trend != expected_trend:
+                    print(
+                        QUALITY_PREFIX,
+                        f"-- FAILED: trend test for year {year}, difference {difference} (expected trend {expected_trend})",
+                    )
+                    trend_test_result = False
+                    break
+            else:
+                difference_percent = abs(base_value - compare_value) / base_value * 100
+                if difference_percent > TREND_PERMISSIBLE_ERROR:
+                    print(
+                        QUALITY_PREFIX,
+                        f"-- FAILED: trend test for year {year}, difference {difference_percent}%",
+                    )
+                    trend_test_result = False
+                    break
+
+            print(QUALITY_PREFIX, f"-- SUCCESS: trend test for year {year}")
 
         result = linkage_test_result and trend_test_result
 
@@ -238,8 +256,13 @@ def process_quantitative_test(test, base_df, files_list, execution_uuid, experim
             test[f"Эффект за {year} год по ML"] = effect_ml
 
             if abs(relative_error) > RELATIVE_ERROR:
+                print(
+                    QUANTITY_PREFIX,
+                    f"-- FAILED: quantitative test for year {year}: relative error {abs(relative_error)} over the limit {RELATIVE_ERROR}%",
+                )
                 result = False
-
+            else:
+                print(QUANTITY_PREFIX, f"-- SUCCESS: quantitative test for year {year}")
         # effect_tnav = test["Эффект за 2025-2026 года по tNav"]
         # effect_ml = sum(
         #     temp_df.loc[temp_df["year"] == year, "difference"].values[0]
