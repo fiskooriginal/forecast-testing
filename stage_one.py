@@ -56,18 +56,17 @@ async def generate_quality_tests():
             events = process_events(row["Мероприятие"])
             years = process_years(row["Год"])
 
-            for event in events:
-                for year in years:
-                    event_id, event_params = event
+            for i in range(len(years)):
+                event_id, event_params = events[i]
 
-                    df.loc[len(df)] = {
-                        "Порядковый номер": order_number,
-                        "ID мероприятия": event_id,
-                        "Название": event_id,
-                        "Дата проведения": datetime(year, 1, 1),
-                        "Параметры мероприятия": event_params,
-                        "Статус": True,
-                    }
+                df.loc[len(df)] = {
+                    "Порядковый номер": order_number,
+                    "ID мероприятия": event_id,
+                    "Название": event_id,
+                    "Дата проведения": datetime(years[i], 1, 1),
+                    "Параметры мероприятия": event_params,
+                    "Статус": True,
+                }
 
             file_name = os.path.join(
                 START_PARAMS_DIR, f"quality_test_{order_number}.xlsx"
