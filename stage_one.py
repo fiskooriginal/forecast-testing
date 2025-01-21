@@ -56,6 +56,9 @@ async def generate_quality_tests():
             events = process_events(row["Мероприятие"])
             years = process_years(row["Год"])
 
+            if len(events) != len(years):
+                raise Exception(f"Разное количество мероприятий и лет в тесте №{order_number}")
+            
             for i in range(len(years)):
                 event_id, event_params = events[i]
 
