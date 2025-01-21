@@ -178,7 +178,7 @@ def process_qualitative_test(test, base_df, files_list, execution_uuid, experime
         linkage = test["Взаимосвязь расчетов"]
         if linkage and pd.notna(linkage):
             # >|(id=14)|
-            linked_sign = linkage.pop(0)
+            linked_sign = linkage[0]
             linked_id = linkage.split("id=")[1].split(")")[0]
             linked_file = get_file_path_by_execution_uuid_and_experiment_id(
                 files_list, execution_uuid, linked_id
