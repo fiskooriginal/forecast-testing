@@ -168,12 +168,11 @@ async def process_qualitative_tests() -> list:
                         f"-- FAILED: experiment #{experiment_id} (linkage {linkage})",
                     )
                     linkage_test_result = False
-                    break
-
-                print(
-                    QUALITY_PREFIX,
-                    f"-- SUCCESS: experiment #{experiment_id} (linkage {linkage})",
-                )
+                else:
+                    print(
+                        QUALITY_PREFIX,
+                        f"-- SUCCESS: experiment #{experiment_id} (linkage {linkage})",
+                    )
 
             # Проверка "Тренд"
             base_df["year"] = pd.to_datetime(base_df["dt"]).dt.year
