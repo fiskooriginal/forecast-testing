@@ -1,9 +1,12 @@
 import os
 import re
 import asyncio
+import statistics
 import sys
+
 from openpyxl import load_workbook
 import pandas as pd
+
 from config import (
     RESULTS_FILE,
     AUTOTESTS_FILE,
@@ -25,9 +28,7 @@ def get_uuid_by_type(type: str) -> str:
     return uuid
 
 
-def get_file_path_by_execution_uuid_and_experiment_id(
-    files: list, execution_uuid: str, experiment_id: str
-):
+def get_file_path(files: list, execution_uuid: str, experiment_id: str):
     pattern = r"experiments\\results_(?P<execution_uuid>[a-zA-Z0-9-]+)_(?P<experiment_id>[a-zA-Z0-9-]+).xlsx"
 
     for file_path in files:
@@ -40,23 +41,6 @@ def get_file_path_by_execution_uuid_and_experiment_id(
                 return file_path
 
     return None
-
-
-def filter_and_sort_files_by_execution_uuid(files, target_execution_uuid):
-    pattern = re.compile(
-        r"experiments\\results_(?P<execution_uuid>[a-zA-Z0-9-]+)_(?P<experiment_id>[a-zA-Z0-9-]+)\\.xlsx"
-    )
-
-    filtered_files = [
-        (match.group("experiment_id"), file)
-        for file in files
-        if (match := pattern.match(file))
-        and match.group("execution_uuid") == target_execution_uuid
-    ]
-
-    filtered_files.sort(key=lambda x: x[0])
-
-    return [file for _, file in filtered_files]
 
 
 def prepare_trend_conditions(trend: str) -> list:
@@ -113,21 +97,16 @@ def calculate_trend(base_value, compare_value) -> tuple:
     return difference, trend
 
 
-def update_excel_cell(sheet, row, col, value):
-    """Обновляет значение ячейки в листе Excel."""
-    sheet.cell(row=row, column=col, value=value)
-
-
 def process_tests_common(
     tests_df, workbook, sheet_name, prefix, uuid_key, process_test
 ):
     """Общий процесс обработки тестов."""
     print(prefix, f"Началась обработка {prefix.lower()} тестов...")
+
     files_list = load_results_files()
     execution_uuid = get_uuid_by_type(uuid_key)
-    base_file = get_file_path_by_execution_uuid_and_experiment_id(
-        files_list, execution_uuid, "0"
-    )
+
+    base_file = get_file_path(files_list, execution_uuid, "0")
     base_df = pd.read_excel(base_file)
 
     results = []
@@ -135,6 +114,7 @@ def process_tests_common(
         experiment_id = str(test["id Теста"])
 
         print(prefix, f"PROCESS Experiment {experiment_id}")
+
         result = process_test(test, base_df, files_list, execution_uuid, experiment_id)
 
         sheet = workbook[sheet_name]
@@ -144,9 +124,9 @@ def process_tests_common(
             sheet.cell(row=index + 2, column=col_idx + 1, value=value)
 
         # Update result in Excel
-        update_excel_cell(
-            sheet, index + 2, tests_df.columns.get_loc("Итог") + 1, result
-        )
+        # sheet.cell(
+        #     row=index + 2, column=tests_df.columns.get_loc("Итог") + 1, value=result
+        # )
 
         results.append(
             {
@@ -163,9 +143,7 @@ def process_qualitative_test(test, base_df, files_list, execution_uuid, experime
     """Обрабатывает один качественный тест."""
     result = True
 
-    experiment_file = get_file_path_by_execution_uuid_and_experiment_id(
-        files_list, execution_uuid, experiment_id
-    )
+    experiment_file = get_file_path(files_list, execution_uuid, experiment_id)
     if experiment_file is None:
         print(
             QUALITY_PREFIX,
@@ -182,9 +160,7 @@ def process_qualitative_test(test, base_df, files_list, execution_uuid, experime
             # >|(id=14)|
             linked_sign = linkage[0]
             linked_id = linkage.split("id=")[1].split(")")[0]
-            linked_file = get_file_path_by_execution_uuid_and_experiment_id(
-                files_list, execution_uuid, linked_id
-            )
+            linked_file = get_file_path(files_list, execution_uuid, linked_id)
             linked_df = pd.read_excel(linked_file)
 
             linked_sum = linked_df["sum"].sum()
@@ -198,8 +174,9 @@ def process_qualitative_test(test, base_df, files_list, execution_uuid, experime
             else:
                 print(
                     QUALITY_PREFIX,
-                    f"-- ERROR: Непредусмотренный символ во взаимосвязи расчетов '{linked_sign}'",
+                    f"-- ERROR: Символ '{linked_sign}' не предусмотрен для проверки взаимосвязи расчетов",
                 )
+
             print(
                 QUALITY_PREFIX,
                 f"-- {'SUCCESS' if linkage_test_result else 'FAILED'}: linkage test {linkage}",
@@ -238,6 +215,13 @@ def process_qualitative_test(test, base_df, files_list, execution_uuid, experime
 
             print(QUALITY_PREFIX, f"-- SUCCESS: trend test for year {year}")
 
+        linkage_test_result = bool(linkage_test_result)
+        trend_test_result = bool(trend_test_result)
+
+        # Записываем результаты тестов
+        test["Итог Взаимосвязь расчетов"] = linkage_test_result
+        test["Итог Тренд"] = trend_test_result
+
         result = linkage_test_result and trend_test_result
 
     return result
@@ -247,9 +231,7 @@ def process_quantitative_test(test, base_df, files_list, execution_uuid, experim
     """Обрабатывает один количественный тест."""
     result = True
 
-    experiment_file = get_file_path_by_execution_uuid_and_experiment_id(
-        files_list, execution_uuid, experiment_id
-    )
+    experiment_file = get_file_path(files_list, execution_uuid, experiment_id)
     if experiment_file is None:
         print(
             QUANTITY_PREFIX,
@@ -262,32 +244,46 @@ def process_quantitative_test(test, base_df, files_list, execution_uuid, experim
         temp_df["difference"] = experiment_df["sum"] - base_df["sum"]
         temp_df["year"] = pd.to_datetime(temp_df["dt"]).dt.year
 
-        result = True
+        result = True  # Результат тестирования
+        errors = []  # Собираем все ошибки и считаем среднее количество
 
         for year in YEARS_TO_CHECK:
             effect_tnav = test[f"Эффект за {year} год по tNav"]
             effect_ml = temp_df.loc[temp_df["year"] == year, "difference"].values[0]
-            relative_error = (1 - (effect_tnav - effect_ml) / effect_tnav) * 100
+
+            relative_error = (
+                100
+                if effect_tnav == 0 and effect_ml != 0
+                else (1 - (effect_tnav - effect_ml) / effect_tnav) * 100
+            )
+
+            # Округление до 2 знака после запятой
+            relative_error = round(relative_error, 2)
+
+            # Заполняем таблицу с результатами
             test[f"Эффект за {year} год по ML"] = effect_ml
+            test[f"Ошибка за {year} год"] = relative_error
+
+            errors.append(relative_error)
 
             if abs(relative_error) > RELATIVE_ERROR:
                 print(
                     QUANTITY_PREFIX,
-                    f"-- FAILED: quantitative test for year {year}: relative error {abs(relative_error)} over the limit {RELATIVE_ERROR}%",
+                    f"-- FAILED: year {year}: relative error {abs(relative_error)}% over the limit {RELATIVE_ERROR}%",
                 )
                 result = False
             else:
-                print(QUANTITY_PREFIX, f"-- SUCCESS: quantitative test for year {year}")
-        # effect_tnav = test["Эффект за 2025-2026 года по tNav"]
-        # effect_ml = sum(
-        #     temp_df.loc[temp_df["year"] == year, "difference"].values[0]
-        #     for year in YEARS_TO_CHECK
-        # )
+                print(QUANTITY_PREFIX, f"-- SUCCESS: for year {year}")
+
+        if errors:
+            test["Средняя ошибка"] = statistics.mean(errors)
+
+        test["Итог"] = bool(result)
 
     return result
 
 
-async def process_qualitative_tests(qualitative_df: pd.DataFrame, workbook) -> list:
+def process_qualitative_tests(qualitative_df: pd.DataFrame, workbook) -> list:
     return process_tests_common(
         qualitative_df,
         workbook,
@@ -298,7 +294,7 @@ async def process_qualitative_tests(qualitative_df: pd.DataFrame, workbook) -> l
     )
 
 
-async def process_quantitative_tests(quantitative_df: pd.DataFrame, workbook) -> list:
+def process_quantitative_tests(quantitative_df: pd.DataFrame, workbook) -> list:
     return process_tests_common(
         quantitative_df,
         workbook,
@@ -309,15 +305,123 @@ async def process_quantitative_tests(quantitative_df: pd.DataFrame, workbook) ->
     )
 
 
-def process_tests(qualitative_df, quantitative_df, workbook) -> tuple:
-    async def _run_async_process():
-        tasks = [
-            process_qualitative_tests(qualitative_df, workbook),
-            process_quantitative_tests(quantitative_df, workbook),
-        ]
-        return await asyncio.gather(*tasks)
+def process_tests():
+    """Обработка всех тестов и сохранение результатов в Excel."""
+    workbook = load_workbook(RESULTS_FILE)
 
-    return tuple(asyncio.run(_run_async_process()))
+    qualitative_df = pd.read_excel(
+        AUTOTESTS_FILE, sheet_name="Список качественных автотестов"
+    )
+    quantitative_df = pd.read_excel(
+        AUTOTESTS_FILE, sheet_name="Список количественных автотесто"
+    )
+
+    qualitative_results = process_qualitative_tests(qualitative_df, workbook)
+    quantitative_results = process_quantitative_tests(quantitative_df, workbook)
+
+    workbook.save(RESULTS_FILE)
+
+    return qualitative_results, quantitative_results
+
+
+from openpyxl import load_workbook
+
+
+def process_statistics():
+    # Открываем файл
+    workbook = load_workbook(RESULTS_FILE)
+
+    # Считываем данные из листов
+    qualitative_sheet = workbook["Список качественных автотестов"]
+    quantitative_sheet = workbook["Список количественных автотесто"]
+
+    # Инициализируем переменные
+    qualitative_results_trend = 0
+    qualitative_results_relationship = 0
+    qualitative_total_tests = 0
+
+    qualitative_failed_trend = 0
+    qualitative_failed_relationship = 0
+
+    quantitative_total_tests = 0
+    total_error = 0
+
+    # Получаем названия столбцов на листе "Список качественных автотестов"
+    qualitative_columns = {
+        cell.value: col for col, cell in enumerate(qualitative_sheet[1], 1)
+    }
+
+    # Считываем данные о качественных тестах
+    for row in qualitative_sheet.iter_rows(min_row=2, values_only=True):
+        # Извлекаем значения по названию столбца
+        trend_result = row[qualitative_columns.get("Итог Тренд") - 1]
+        relationship_result = row[
+            qualitative_columns.get("Итог Взаимосвязь расчетов") - 1
+        ]
+
+        qualitative_total_tests += 1
+
+        if trend_result:
+            qualitative_results_trend += 1
+        else:
+            qualitative_failed_trend += 1
+
+        if relationship_result:
+            qualitative_results_relationship += 1
+        else:
+            qualitative_failed_relationship += 1
+
+    # Получаем названия столбцов на листе "Список количественных автотестов"
+    quantitative_columns = {
+        cell.value: col for col, cell in enumerate(quantitative_sheet[1], 1)
+    }
+
+    # Считываем данные о количественных тестах
+    for row in quantitative_sheet.iter_rows(min_row=2, values_only=True):
+        # Извлекаем значения по названию столбца
+        error = row[quantitative_columns.get("Средняя ошибка") - 1]
+        if error is not None:
+            total_error += error
+        quantitative_total_tests += 1
+
+    # Рассчитываем проценты
+    if qualitative_total_tests > 0:
+        percent_completed_trend = (
+            qualitative_results_trend / qualitative_total_tests
+        ) * 100
+        percent_completed_relationship = (
+            qualitative_results_relationship / qualitative_total_tests
+        ) * 100
+        percent_failed_trend = (
+            qualitative_failed_trend / qualitative_total_tests
+        ) * 100
+        percent_failed_relationship = (
+            qualitative_failed_relationship / qualitative_total_tests
+        ) * 100
+    else:
+        percent_completed_trend = 0
+        percent_completed_relationship = 0
+        percent_failed_trend = 0
+        percent_failed_relationship = 0
+
+    # Рассчитываем среднюю ошибку по количественным тестам
+    if quantitative_total_tests > 0:
+        quantitative_average_error = total_error / quantitative_total_tests
+    else:
+        quantitative_average_error = 0
+
+    # Записываем статистику в лист "Статистика"
+
+    stats_sheet = workbook["Статистика"]
+
+    stats_sheet["B2"] = f"{percent_completed_trend:.2f}%"
+    stats_sheet["B3"] = f"{percent_completed_relationship:.2f}%"
+    stats_sheet["B4"] = f"{percent_failed_trend:.2f}%"
+    stats_sheet["B5"] = f"{percent_failed_relationship:.2f}%"
+    stats_sheet["B6"] = f"{quantitative_average_error:.2f}"
+
+    workbook.save(RESULTS_FILE)
+    print("Статистика успешно сохранена в файл.")
 
 
 def run_stage_two():
@@ -329,24 +433,12 @@ def run_stage_two():
             f"Директория {EXPERIMENTS_DIR} с результатами экспериментов не найдена."
         )
 
-    workbook = load_workbook(AUTOTESTS_FILE)
-    qualitative_df = pd.read_excel(
-        AUTOTESTS_FILE,
-        sheet_name="Список качественных автотестов",
-    )
-    quantitative_df = pd.read_excel(
-        AUTOTESTS_FILE, sheet_name="Список количественных автотесто"
-    )
+    process_tests()
 
-    # Обработка качественных и количественных тестов
-    process_tests(qualitative_df, quantitative_df, workbook)
+    # Заполнение листа со статистикой
+    process_statistics()
 
-    file_name = f"{AUTOTESTS_FILE}_new.xlsx"
-
-    # Сохранение изменений
-    workbook.save(file_name)
-
-    print(f"Результаты тестирования сохранены в файле {file_name}")
+    print(f"Результаты тестирования сохранены в файле {RESULTS_FILE}")
 
 
 if __name__ == "__main__":
