@@ -307,7 +307,7 @@ def process_quantitative_tests(quantitative_df: pd.DataFrame, workbook) -> list:
 
 def process_tests():
     """Обработка всех тестов и сохранение результатов в Excel."""
-    workbook = load_workbook(RESULTS_FILE)
+    workbook = load_workbook(AUTOTESTS_FILE)
 
     qualitative_df = pd.read_excel(
         AUTOTESTS_FILE, sheet_name="Список качественных автотестов"
