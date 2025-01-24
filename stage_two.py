@@ -382,7 +382,7 @@ def process_statistics():
         error = row[quantitative_columns.get("Средняя ошибка") - 1]
         if error is not None:
             total_error += error
-        quantitative_total_tests += 1
+            quantitative_total_tests += 1
 
     # Рассчитываем проценты
     if qualitative_total_tests > 0:
@@ -407,7 +407,7 @@ def process_statistics():
     # Рассчитываем среднюю ошибку по количественным тестам
     if quantitative_total_tests > 0:
         quantitative_average_error = total_error / quantitative_total_tests
-        print(f"Количество кач. тестов: {quantitative_total_tests}; Сумма всех ошибок: {total_error}; Средняя ошибка: {quantitative_average_error}")
+        print(f"Количество колич. тестов: {quantitative_total_tests}; Сумма всех ошибок: {total_error}; Средняя ошибка: {quantitative_average_error}")
     else:
         quantitative_average_error = 0
 
