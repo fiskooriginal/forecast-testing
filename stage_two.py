@@ -266,7 +266,8 @@ def process_quantitative_test(test, base_df, files_list, execution_uuid, experim
             errors.append(relative_error)
 
         average_error = statistics.mean(errors)
-
+        test["Средняя ошибка"] = average_error
+        
         if abs(average_error) > RELATIVE_ERROR:
             print(
                 QUANTITY_PREFIX,
