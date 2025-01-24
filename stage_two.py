@@ -171,7 +171,7 @@ def process_qualitative_test(test, base_df, files_list, execution_uuid, experime
             elif linked_sign == "<":
                 linkage_test_result = current_sum < linked_sum
             elif linked_sign == "=":
-                difference_percent = abs(base_value - compare_value) / base_value * 100
+                difference_percent = abs(current_sum - linked_sum) / current_sum * 100
                 if difference_percent > TREND_PERMISSIBLE_ERROR:
                     trend_test_result = False
             else:
