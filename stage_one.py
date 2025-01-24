@@ -157,5 +157,6 @@ if __name__ == "__main__":
     try:
         run_stage_one()
     except Exception as e:
-        print(f"Ошибка выполнения первого этапа: {e}")
+        print(f"Ошибка выполнения первого этапа: {e.with_traceback(e.__traceback__)}")
+    finally:
         sys.exit(1)

@@ -446,6 +446,6 @@ if __name__ == "__main__":
     try:
         run_stage_two()
     except Exception as e:
-        print(f"Ошибка выполнения второго этапа: {e}")
+        print(f"Ошибка выполнения второго этапа: {e.with_traceback(e.__traceback__)}")
     finally:
         sys.exit(1)
