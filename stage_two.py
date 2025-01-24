@@ -145,11 +145,9 @@ def process_qualitative_test(test, base_df, files_list, execution_uuid, experime
 
     experiment_file = get_file_path(files_list, execution_uuid, experiment_id)
     if experiment_file is None:
-        print(
-            QUALITY_PREFIX,
-            f"-- ERROR: Не найден файл с результатами эксперимента для №{experiment_id}",
-        )
-        result = False
+        error = f"Не найден файл с результатами эксперимента для №{experiment_id}"
+        print(QUALITY_PREFIX, f"-- ERROR: {error}")
+        raise Exception(error)
     else:
         experiment_df = pd.read_excel(experiment_file)
 
@@ -171,11 +169,14 @@ def process_qualitative_test(test, base_df, files_list, execution_uuid, experime
                 linkage_test_result = current_sum > linked_sum
             elif linked_sign == "<":
                 linkage_test_result = current_sum < linked_sum
+            elif linked_sign == "=":
+                difference_percent = abs(base_value - compare_value) / base_value * 100
+                if difference_percent > TREND_PERMISSIBLE_ERROR:
+                    trend_test_result = False
             else:
-                print(
-                    QUALITY_PREFIX,
-                    f"-- ERROR: Символ '{linked_sign}' не предусмотрен для проверки взаимосвязи расчетов",
-                )
+                error = f"Символ '{linked_sign}' не предусмотрен для проверки взаимосвязи расчетов"
+                print(QUALITY_PREFIX, f"-- ERROR: {error}")
+                raise Exception(error)
 
             print(
                 QUALITY_PREFIX,
@@ -233,11 +234,9 @@ def process_quantitative_test(test, base_df, files_list, execution_uuid, experim
 
     experiment_file = get_file_path(files_list, execution_uuid, experiment_id)
     if experiment_file is None:
-        print(
-            QUANTITY_PREFIX,
-            f"-- ERROR: Не найден файл с результатами эксперимента для №{experiment_id}",
-        )
-        result = False
+        error = f"Не найден файл с результатами эксперимента для №{experiment_id}"
+        print(QUANTITY_PREFIX, f"-- ERROR: {error}")
+        raise Exception(error)
     else:
         experiment_df = pd.read_excel(experiment_file)
         temp_df = experiment_df.copy()
@@ -267,7 +266,7 @@ def process_quantitative_test(test, base_df, files_list, execution_uuid, experim
 
         average_error = statistics.mean(errors)
         test["Средняя ошибка"] = average_error
-        
+
         if abs(average_error) > RELATIVE_ERROR:
             print(
                 QUANTITY_PREFIX,
