@@ -40,7 +40,7 @@ def get_file_path(files: list, execution_uuid: str, experiment_id: str):
             ):
                 return file_path
     
-    raise Exception(f"Не найден файл 'experiments\{execution_uuid}\{experiment_id}.xlsx'")
+    raise Exception(f"Не найден файл 'experiments/results_{execution_uuid}_{experiment_id}.xlsx'")
 
 
 def prepare_trend_conditions(trend: str) -> list:
