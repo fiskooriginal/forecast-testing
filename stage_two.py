@@ -254,7 +254,7 @@ def process_quantitative_test(test, base_df, files_list, execution_uuid, experim
             relative_error = (
                 100
                 if effect_tnav == 0 and effect_ml != 0
-                else (1 - (effect_tnav - effect_ml) / effect_tnav) * 100
+                else ((effect_tnav - effect_ml) / effect_tnav) * 100
             )
 
             # Округление до 2 знака после запятой
