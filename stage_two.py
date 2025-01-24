@@ -407,7 +407,7 @@ def process_statistics():
     # Рассчитываем среднюю ошибку по количественным тестам
     if quantitative_total_tests > 0:
         quantitative_average_error = total_error / quantitative_total_tests
-        print("Количество кач. тестов: {quantitative_total_tests}; Сумма всех ошибок: {total_error}; Средняя ошибка: {quantitative_average_error}")
+        print(f"Количество кач. тестов: {quantitative_total_tests}; Сумма всех ошибок: {total_error}; Средняя ошибка: {quantitative_average_error}")
     else:
         quantitative_average_error = 0
 
