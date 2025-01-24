@@ -39,8 +39,8 @@ def get_file_path(files: list, execution_uuid: str, experiment_id: str):
                 and match.group("experiment_id") == experiment_id
             ):
                 return file_path
-
-    return None
+    
+    raise Exception(f"Не найден файл 'experiments\{execution_uuid}\{experiment_id}.xlsx'")
 
 
 def prepare_trend_conditions(trend: str) -> list:
@@ -107,6 +107,7 @@ def process_tests_common(
     execution_uuid = get_uuid_by_type(uuid_key)
 
     base_file = get_file_path(files_list, execution_uuid, "0")
+    
     base_df = pd.read_excel(base_file)
 
     results = []
