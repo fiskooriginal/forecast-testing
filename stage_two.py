@@ -244,7 +244,6 @@ def process_quantitative_test(test, base_df, files_list, execution_uuid, experim
         temp_df["difference"] = experiment_df["sum"] - base_df["sum"]
         temp_df["year"] = pd.to_datetime(temp_df["dt"]).dt.year
 
-        result = True  # Результат тестирования
         errors = []  # Собираем все ошибки и считаем среднее количество
 
         for year in YEARS_TO_CHECK:
@@ -266,17 +265,16 @@ def process_quantitative_test(test, base_df, files_list, execution_uuid, experim
 
             errors.append(relative_error)
 
-            if abs(relative_error) > RELATIVE_ERROR:
-                print(
-                    QUANTITY_PREFIX,
-                    f"-- FAILED: year {year}: relative error {abs(relative_error)}% over the limit {RELATIVE_ERROR}%",
-                )
-                result = False
-            else:
-                print(QUANTITY_PREFIX, f"-- SUCCESS: for year {year}")
+        average_error = statistics.mean(errors)
 
-        if errors:
-            test["Средняя ошибка"] = statistics.mean(errors)
+        if abs(average_error) > RELATIVE_ERROR:
+            print(
+                QUANTITY_PREFIX,
+                f"-- FAILED: average relative error {relative_error}% over the limit {RELATIVE_ERROR}%",
+            )
+            result = False
+        else:
+            print(QUANTITY_PREFIX, f"-- SUCCESS: for year {year}")
 
         test["Итог"] = bool(result)
 
@@ -407,7 +405,9 @@ def process_statistics():
     # Рассчитываем среднюю ошибку по количественным тестам
     if quantitative_total_tests > 0:
         quantitative_average_error = total_error / quantitative_total_tests
-        print(f"Количество колич. тестов: {quantitative_total_tests}; Сумма всех ошибок: {total_error}; Средняя ошибка: {quantitative_average_error}")
+        print(
+            f"Количество колич. тестов: {quantitative_total_tests}; Сумма всех ошибок: {total_error}; Средняя ошибка: {quantitative_average_error}"
+        )
     else:
         quantitative_average_error = 0
 
